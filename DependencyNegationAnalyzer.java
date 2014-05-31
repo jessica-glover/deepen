@@ -1,20 +1,56 @@
-package edu.iupui.dependencyNegation;
-
+package dependencyNegation;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import edu.iupui.negEx.CallKit;
-import edu.iupui.stanfordDependencyParser.StanfordDependencyParser;
+import edu.iupui.pancyst.Constants;
+import edu.iupui.pancyst.Utilities;
+
+import edu.stanfordDependencyParser.StanfordDependencyParser;
+import edu.iupui.NegEx.CallKit;
+import edu.iupui.pancyst.DBReader;
 import edu.stanford.nlp.trees.TypedDependency;
 
 public class  DependencyNegationAnalyzer{
+
 	private static boolean isPrepWithout = false;
 	private static boolean isPrepOther = false;
 	private static boolean isConjunction = false;
 	private static boolean isNSubject = false;
 	private static boolean isSuggest = false;
+	private static boolean isNegationRoot = false;
+
+	//	private static HashMap<String, String> negationStatusDictionary = new HashMap<String, String>();
+	//		
+	//	public static HashMap<String, String> getNegationStatusDictionary() {
+	//		return negationStatusDictionary;
+	//	}
+	//
+	//	public void setNegationStatusDictionary(
+	//			HashMap<String, String> negationStatusDictionary) {
+	//		DependencyNegationAnalyzer.negationStatusDictionary = negationStatusDictionary;
+	//	}
+
+	//	public DependencyNegationAnalyzer()
+	//	{
+	//		DBReader databaseValues = new DBReader();
+	//		setNegationStatusDictionary(databaseValues.getNegationStatusDictionary());
+	//	}
+
+	public static boolean isNegationRoot() {
+		return isNegationRoot;
+	}
+
+
+	public static void setNegationRoot(boolean isNegationRoot) {
+		DependencyNegationAnalyzer.isNegationRoot = isNegationRoot;
+	}
+
 
 	public static boolean isPrepWithout() {
 		return isPrepWithout;
@@ -80,27 +116,29 @@ public class  DependencyNegationAnalyzer{
 	 */
 	public static void main(String[] args)
 	{
-//		String fileName = "~/test.txt";
+		String fileName = "~/test.txt";
 
 		//		PrintWriter fileWriter = null;
+
+		DependencyNegationAnalyzer dPa = new DependencyNegationAnalyzer();
+
 		try {
 			//			fileWriter = new PrintWriter("C:/Documents and Settings/anand/Desktop/Work_Stuff/Regenstrief_Work/Analysis/Cyst_Identification_Work/Validation_Output.txt");
-//			BufferedReader fileReader = new BufferedReader(new FileReader(fileName));			
+			BufferedReader fileReader = new BufferedReader(new FileReader(fileName));			
 			String inputString = "";
 			String outputString = "";
-//			while(null != (inputString = fileReader.readLine()))
+			while(null != (inputString = fileReader.readLine()))
 			{
-				inputString = "pseudocyst" + "\t" + "There is no significant interval increase in size of pancreatic pseudocyst compared to prior exam.";
-
-//				inputString = "pseudocyst" +"\t" + "No organized fluid collections, abscess formation, or significant pseudocyst formation is present.";
-				//				fileWriter.write(inputString);
-				outputString = AnalyzeDependencyNegation(inputString);
-				
+		 
+								inputString = "pseudocyst" + "\t" +  "No peripancreatic fluid collections to suggest pseudocyst formation.2.";
+				System.out.println(inputString);
+				outputString = dPa.AnalyzeDependencyNegation(inputString);
+				System.out.println(outputString);
 				//				fileWriter.write(outputString);
 				//				fileWriter.write("\n");	
 			}
-			System.out.println(outputString);
-//			fileReader.close();
+
+			fileReader.close();
 		}		
 		catch (Exception e) {
 			e.printStackTrace();
@@ -108,13 +146,41 @@ public class  DependencyNegationAnalyzer{
 	}
 
 
-	public static String AnalyzeDependencyNegation(String inputString) 
-	{		
+	public String AnalyzeDependencyNegation(String inputString) 
+	{
 		String outputString = "";
 		String conceptTerm = inputString.split("\t")[0];		
 		String sentence = inputString.split("\t")[1];
+		List<String> specialCharacter = new ArrayList<String>();
+		Pattern regexForSpecialCharacters = Pattern.compile("[^\\w\\s]");
+		Matcher matcher = regexForSpecialCharacters.matcher(sentence);
+//		Pattern mSentence = Pattern.compile("(?i)\\w+\\.{1} ?\\d{1,2}");		
+//		
+//		Matcher mat = mSentence.matcher(sentence);
+//		if (mat.find()){
+//			sentence = sentence.replaceAll(" ?\\d\\.", "");
+//		}
+		
+		while(matcher.find())
+		{
+			if(matcher.end() != sentence.length())
+			{
+				specialCharacter.add(sentence.substring(matcher.start(), matcher.end()));
+			}
+		}
 
+		specialCharacter = RemoveDuplicates(specialCharacter);
+		for(int specialCharIndex = 0; specialCharIndex < specialCharacter.size(); specialCharIndex++)
+		{
+			sentence = sentence.replace(specialCharacter.get(specialCharIndex), " " + specialCharacter.get(specialCharIndex) + " ");
+		}
+
+		sentence = sentence.replace("  ", " ");
+		inputString = conceptTerm + "\t" + sentence;
+
+		HashMap<String, String> negationDictionary = new HashMap<String, String>();
 		try {
+
 			CallKit ck = new CallKit();
 			String result = ck.CallKitMethod(inputString);
 			String negationToken = "";
@@ -132,14 +198,15 @@ public class  DependencyNegationAnalyzer{
 				setPrepOther(false);				
 				setConjunction(false);
 				setSuggest(false);
+				setNegationRoot(false);
 
 				for (int sdpOutputIndex=0; sdpOutputIndex < sdpOutput.size(); sdpOutputIndex++)
 				{	
-					System.out.println(sdpTemp);
 					sdpTemp = sdpOutput.get(sdpOutputIndex).toString().replaceAll("," ," ");
 					sdpTemp = sdpTemp.replaceAll("\\(", " ");
 					sdpTemp = sdpTemp.replaceAll("\\)", " ");
 					sdpTemp = sdpTemp.replaceAll("  ", " ");
+					System.out.println(sdpTemp);
 					dependencyParts = sdpTemp.split(" ");
 					sdpForSentence[sdpOutputIndex] = dependencyParts;
 
@@ -171,15 +238,22 @@ public class  DependencyNegationAnalyzer{
 							sdpTemp.split(" ")[2].split("-")[0].equals("suggests"))
 					{
 						setSuggest(true);
-					}		
-				}
+					}	
 
+					if(sdpTemp.split(" ")[0].split("-")[0].equals("root") && 
+							negationToken.toLowerCase().contains(sdpTemp.split(" ")[2].split("-")[0].toLowerCase()))
+					{
+						setNegationRoot(true);
+					}
+				}
+								
 				if(isConjunction())
 				{
 					String[] sentenceParts = sentence.split("and");
 
 					for(int sentencePartIndex = 0; sentencePartIndex < sentenceParts.length; sentencePartIndex++)
 					{
+						sentenceParts[sentencePartIndex] = (sentenceParts[sentencePartIndex] + ".").trim().replace("..", ".");
 						result = ck.CallKitMethod(conceptTerm + "\t" + sentenceParts[sentencePartIndex]);
 
 						if(result.equals("Negated"))
@@ -191,9 +265,10 @@ public class  DependencyNegationAnalyzer{
 							sdpForSentence = new String[sdpOutput.size()][3];
 
 							setPrepWithout(false);
-							setPrepOther(false);							
+							setPrepOther(false);
 							setNominalSubject(false);
 							setSuggest(false);
+							setNegationRoot(false);
 
 							for (int sdpOutputIndex=0; sdpOutputIndex < sdpOutput.size(); sdpOutputIndex++)
 							{
@@ -221,19 +296,24 @@ public class  DependencyNegationAnalyzer{
 									setNominalSubject(true);
 								}		
 
-								if(sdpTemp.split(" ")[1].equals("suggests") || 
-										sdpTemp.split(" ")[2].equals("suggests") ||
+								if(sdpTemp.split(" ")[1].equals("suggest") || 
+										sdpTemp.split(" ")[2].equals("suggest") ||
 										sdpTemp.split(" ")[1].equals("suggests") || 
 										sdpTemp.split(" ")[2].equals("suggests"))
 								{
 									setSuggest(true);
-								}								
+								}	
+
+								if(sdpTemp.split(" ")[0].split("-")[0].equals("root") && 
+										negationToken.toLowerCase().contains(sdpTemp.split(" ")[2].split("-")[0].toLowerCase()))
+								{
+									setNegationRoot(true);
+								}
 							}
 
 							outputString = ProcessSentence(sdpForSentence, conceptTerm, negationTokens);
 
-							if(0 == outputString.compareTo("Negation Confirmed by SDP") || 
-									0 == outputString.compareTo("Negation"))
+							if(outputString.contains("Negation"))
 							{
 								break;
 							}
@@ -241,7 +321,6 @@ public class  DependencyNegationAnalyzer{
 						else
 						{
 							outputString = "Affirmed";
-//							outputString = "Affirmed";
 						}
 					}					
 				}
@@ -252,16 +331,18 @@ public class  DependencyNegationAnalyzer{
 			}
 			else
 			{
-				outputString = "Affirmed" ;
+				outputString = "Affirmed";
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 
 		return outputString;
-					}
+	}
+
+
 	private static String ProcessSentence(String[][] sdpForSentence, String conceptTerm, String[] negationTokens)
-	{		
+	{
 		Boolean isConceptPresentInPrepOther = false; 
 		boolean conceptPresent = false;
 		String productionChain = "";
@@ -269,7 +350,7 @@ public class  DependencyNegationAnalyzer{
 
 		if(isPrepWithout())
 		{
-			StanfordDependencyParser.GetProductionChainForPrepWithout(sdpForSentence);
+			StanfordDependencyParser.GetProductionChainForPrepWithoutAndRoot(sdpForSentence, Constants.PrepWithout);
 			setPrepOther(false);
 		}
 		else
@@ -286,6 +367,11 @@ public class  DependencyNegationAnalyzer{
 			{
 				StanfordDependencyParser.GenerateProductionChain(sdpForSentence, negationTokens);
 			}
+
+		if(isNegationRoot())
+		{
+			StanfordDependencyParser.GetProductionChainForPrepWithoutAndRoot(sdpForSentence, Constants.RootWord);
+		}
 
 		if(isNominalSubject())
 		{
@@ -330,7 +416,7 @@ public class  DependencyNegationAnalyzer{
 		else 
 			if(isConceptPresentInPrepOther)
 			{
-				outputString = "Affirmed by SDP";
+				outputString = "Affirmed by SDP";;
 			}
 			else
 			{
@@ -343,7 +429,6 @@ public class  DependencyNegationAnalyzer{
 	/*
 	 * Method to check if the Concept is present in the Production Chain.
 	 */
-	
 	private static boolean IsConceptPresent(String productionChain, String conceptTerm) {
 
 		String[] conceptTermParts = conceptTerm.split(" ");
@@ -373,4 +458,25 @@ public class  DependencyNegationAnalyzer{
 
 		return conceptFound;
 	}	
+
+	public List<String> RemoveDuplicates(List<String> itemList) {
+		String tempItem = "";
+
+		for(int itemIndex = 0; itemIndex < itemList.size(); itemIndex++)
+		{		
+			tempItem = itemList.get(itemIndex);
+			for(int tempIndex = itemIndex + 1; tempIndex < itemList.size(); tempIndex++)
+			{
+				if(0 == itemList.get(tempIndex).compareToIgnoreCase(tempItem))
+				{
+					itemList.remove(tempIndex);
+					itemIndex = -1;
+					break;
+				}
+			}			
+		}
+
+		return itemList;
+
+	}
 }
